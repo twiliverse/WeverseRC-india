@@ -1,0 +1,439 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Weverse RCIndia - 3D Infrastructure Prototype</title>
+
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  
+  <!-- Three.js & OrbitControls -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+  
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+
+  <!-- Google Fonts -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+
+  <style>
+    body {
+      margin: 0;
+      overflow: hidden;
+      font-family: 'Inter', sans-serif;
+      background-color: #08090d;
+      color: #ffffff;
+      user-select: none;
+    }
+    #webgl-container {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      z-index: 1;
+    }
+    .glass {
+      background: rgba(20, 22, 29, 0.7);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+    }
+    .weverse-gradient {
+      background: linear-gradient(135deg, #00d8a1, #10b981, #0ea5e9);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    
+    ::-webkit-scrollbar { width: 4px; }
+    ::-webkit-scrollbar-thumb { background: rgba(168, 85, 247, 0.4); border-radius: 4px; }
+  </style>
+</head>
+<body>
+
+  <!-- 3D CANVAS -->
+  <div id="webgl-container"></div>
+
+  <!-- UI OVERLAY -->
+  <div class="relative z-10 w-full h-screen pointer-events-none flex flex-col justify-between">
+    
+    <!-- TOP HEADER -->
+    <header class="p-4 md:p-6 flex justify-between items-start w-full pointer-events-auto">
+      <div class="glass px-4 py-3 rounded-2xl shadow-2xl flex items-center gap-3">
+        <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-[#00d8a1] to-[#0ea5e9] flex items-center justify-center font-bold text-lg text-white shadow-[0_0_15px_rgba(0,216,161,0.4)]">
+          W
+        </div>
+        <div>
+          <h1 class="font-extrabold text-lg tracking-tight flex items-center gap-2">
+            Weverse <span class="weverse-gradient">RCIndia</span>
+          </h1>
+          <p class="text-[10px] text-gray-400 font-mono uppercase tracking-widest flex items-center gap-1">
+            <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+            Regional Edge Network
+          </p>
+        </div>
+      </div>
+
+      <!-- Network Status -->
+      <div class="glass px-4 py-2.5 rounded-xl hidden md:flex gap-4 items-center text-[10px] font-mono text-gray-400">
+        <div class="flex flex-col items-end"><span class="text-gray-500">ACTIVE CIRCLES</span><strong class="text-white text-xs">4</strong></div>
+        <div class="h-6 w-px bg-white/10"></div>
+        <div class="flex flex-col items-end"><span class="text-gray-500">WS LATENCY</span><strong class="text-emerald-400 text-xs">12ms</strong></div>
+      </div>
+    </header>
+
+    <!-- DYNAMIC SIDE PANEL -->
+    <main class="absolute left-4 md:left-6 top-28 bottom-28 w-80 pointer-events-auto flex flex-col transition-all duration-500" id="feed-panel">
+      <!-- Content Injected via JS -->
+    </main>
+
+    <!-- BOTTOM WEVERSE NAVIGATION -->
+    <footer class="w-full p-4 pointer-events-auto flex justify-center pb-6 md:pb-8">
+      <div class="glass px-2 py-2 rounded-2xl flex items-center gap-1 shadow-2xl border-white/10">
+        
+        <button onclick="switchView('overview')" id="btn-overview" class="nav-btn active flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white/10 text-white font-semibold text-sm transition-all hover:bg-white/20">
+          <i data-lucide="network" class="w-4 h-4"></i>
+          <span class="hidden md:block">Macro Net</span>
+        </button>
+
+        <button onclick="switchView('circles')" id="btn-circles" class="nav-btn flex items-center gap-2 px-4 py-2.5 rounded-xl text-gray-400 font-semibold text-sm transition-all hover:bg-white/10 hover:text-white">
+          <i data-lucide="map-pin" class="w-4 h-4"></i>
+          <span class="hidden md:block">Local Circles</span>
+        </button>
+
+        <button onclick="switchView('sync')" id="btn-sync" class="nav-btn flex items-center gap-2 px-4 py-2.5 rounded-xl text-gray-400 font-semibold text-sm transition-all hover:bg-white/10 hover:text-white relative">
+          <i data-lucide="radio" class="w-4 h-4"></i>
+          <span class="hidden md:block">Live Sync</span>
+          <span class="absolute top-2 right-2 w-1.5 h-1.5 bg-red-500 rounded-full animate-ping"></span>
+        </button>
+
+        <button onclick="switchView('vault')" id="btn-vault" class="nav-btn flex items-center gap-2 px-4 py-2.5 rounded-xl text-gray-400 font-semibold text-sm transition-all hover:bg-white/10 hover:text-white">
+          <i data-lucide="layers" class="w-4 h-4"></i>
+          <span class="hidden md:block">Collector Vault</span>
+        </button>
+
+      </div>
+    </footer>
+  </div>
+
+  <!-- 3D ENGINE & LOGIC -->
+  <script>
+    lucide.createIcons();
+
+    // --- 1. SCENE SETUP ---
+    const container = document.getElementById('webgl-container');
+    const scene = new THREE.Scene();
+    scene.fog = new THREE.FogExp2(0x08090d, 0.015);
+
+    const camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 0.1, 1000);
+    
+    // Camera Targets
+    const camTargets = {
+      overview: { pos: new THREE.Vector3(0, 45, 75), look: new THREE.Vector3(0, 0, 0) },
+      circles:  { pos: new THREE.Vector3(-30, 20, 20), look: new THREE.Vector3(-15, 5, 0) },
+      sync:     { pos: new THREE.Vector3(25, 10, -30), look: new THREE.Vector3(15, 10, -15) },
+      vault:    { pos: new THREE.Vector3(50, 5, 25), look: new THREE.Vector3(45, 0, 0) }
+    };
+    
+    let currentCamPos = camTargets.overview.pos.clone();
+    let currentLookAt = camTargets.overview.look.clone();
+    camera.position.copy(currentCamPos);
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    container.appendChild(renderer.domElement);
+
+    const controls = new THREE.OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.05;
+    controls.maxPolarAngle = Math.PI / 2 + 0.1;
+
+    // --- 2. LIGHTING ---
+    scene.add(new THREE.AmbientLight(0xffffff, 0.3));
+    
+    const coreLight = new THREE.PointLight(0x00d8a1, 2.5, 100);
+    scene.add(coreLight);
+
+    const nodeLight1 = new THREE.PointLight(0xa855f7, 2, 50);
+    nodeLight1.position.set(-20, 5, 10);
+    scene.add(nodeLight1);
+
+    // --- 3. ARCHITECTURE GEOMETRIES ---
+    const nodes = [];
+
+    // A. Pan-India Global Core (Center)
+    const coreGroup = new THREE.Group();
+    scene.add(coreGroup);
+
+    const coreGeo = new THREE.IcosahedronGeometry(6, 2);
+    const coreMat = new THREE.MeshStandardMaterial({
+      color: 0x00d8a1, wireframe: true, transparent: true, opacity: 0.6
+    });
+    const coreMesh = new THREE.Mesh(coreGeo, coreMat);
+    coreGroup.add(coreMesh);
+    
+    const innerCore = new THREE.Mesh(
+      new THREE.SphereGeometry(3.5, 32, 32),
+      new THREE.MeshBasicMaterial({ color: 0x00d8a1 })
+    );
+    coreGroup.add(innerCore);
+    nodes.push({ mesh: coreGroup, pos: new THREE.Vector3(0,0,0) });
+
+    // B. Regional Hubs (Mumbai, Delhi, IITM)
+    const hubConfigs = [
+      { pos: [-25, 8, 15], color: 0xa855f7, name: 'Mumbai' },
+      { pos: [15, 12, -20], color: 0xef4444, name: 'LiveSync' }, // QueueShield Node
+      { pos: [20, 2, 15], color: 0x3b82f6, name: 'IITM' }
+    ];
+
+    const linesGroup = new THREE.Group();
+    scene.add(linesGroup);
+
+    hubConfigs.forEach(conf => {
+      const hubGroup = new THREE.Group();
+      hubGroup.position.set(...conf.pos);
+      
+      const shell = new THREE.Mesh(
+        new THREE.OctahedronGeometry(3, 1),
+        new THREE.MeshStandardMaterial({ color: conf.color, wireframe: true })
+      );
+      const core = new THREE.Mesh(
+        new THREE.SphereGeometry(1.5, 16, 16),
+        new THREE.MeshBasicMaterial({ color: conf.color })
+      );
+      hubGroup.add(shell);
+      hubGroup.add(core);
+      scene.add(hubGroup);
+      nodes.push({ mesh: hubGroup, ...conf });
+
+      // Connect to center
+      const curve = new THREE.QuadraticBezierCurve3(
+        new THREE.Vector3(0,0,0),
+        new THREE.Vector3(conf.pos[0]*0.5, 20, conf.pos[2]*0.5),
+        new THREE.Vector3(...conf.pos)
+      );
+      const tubeGeo = new THREE.TubeGeometry(curve, 20, 0.1, 8, false);
+      const tubeMat = new THREE.MeshBasicMaterial({ color: conf.color, transparent: true, opacity: 0.4 });
+      linesGroup.add(new THREE.Mesh(tubeGeo, tubeMat));
+    });
+
+    // C. Live Sync Particles (QueueShield Engine Storm)
+    const syncNodePos = new THREE.Vector3(15, 12, -20);
+    const syncGeo = new THREE.BufferGeometry();
+    const syncCount = 4000;
+    const syncPos = new Float32Array(syncCount * 3);
+    for(let i=0; i<syncCount*3; i+=3) {
+      const radius = 5 + Math.random() * 15;
+      const theta = Math.random() * Math.PI * 2;
+      syncPos[i] = Math.cos(theta) * radius;
+      syncPos[i+1] = (Math.random() - 0.5) * 8;
+      syncPos[i+2] = Math.sin(theta) * radius;
+    }
+    syncGeo.setAttribute('position', new THREE.BufferAttribute(syncPos, 3));
+    const syncMat = new THREE.PointsMaterial({ size: 0.2, color: 0xef4444, blending: THREE.AdditiveBlending });
+    const syncStorm = new THREE.Points(syncGeo, syncMat);
+    syncStorm.position.copy(syncNodePos);
+    scene.add(syncStorm);
+
+    // D. Collector Vault (Floating Photocards)
+    const vaultGroup = new THREE.Group();
+    vaultGroup.position.set(45, 0, 0);
+    scene.add(vaultGroup);
+
+    const cardGeo = new THREE.PlaneGeometry(3, 4.5);
+    for(let i=0; i<8; i++) {
+      const cardMat = new THREE.MeshStandardMaterial({ 
+        color: 0xffffff, metalness: 0.8, roughness: 0.2, side: THREE.DoubleSide,
+        emissive: 0x8b5cf6, emissiveIntensity: 0.2
+      });
+      const card = new THREE.Mesh(cardGeo, cardMat);
+      const angle = (i / 8) * Math.PI * 2;
+      card.position.set(Math.cos(angle)*8, Math.sin(i*2)*2, Math.sin(angle)*8);
+      card.lookAt(vaultGroup.position);
+      vaultGroup.add(card);
+    }
+
+    // Grid Floor
+    const grid = new THREE.GridHelper(200, 100, 0x00d8a1, 0x111111);
+    grid.position.y = -15;
+    grid.material.transparent = true;
+    grid.material.opacity = 0.2;
+    scene.add(grid);
+
+    // --- 4. ANIMATION LOOP ---
+    const clock = new THREE.Clock();
+    function animate() {
+      requestAnimationFrame(animate);
+      const time = clock.getElapsedTime();
+
+      // Rotate nodes
+      coreGroup.rotation.y = time * 0.2;
+      coreGroup.children[0].rotation.x = time * 0.1;
+      
+      nodes.forEach((n, i) => {
+        if(i > 0) {
+          n.mesh.rotation.y = -time * 0.5;
+          n.mesh.position.y = n.pos[1] + Math.sin(time*2 + i)*1.5; // Hover
+        }
+      });
+
+      // Animate Sync Storm
+      syncStorm.rotation.y = time * 0.8;
+      
+      // Animate Vault Cards
+      vaultGroup.rotation.y = -time * 0.15;
+      vaultGroup.children.forEach((card, i) => {
+        card.position.y = Math.sin(time*2 + i)*1.5;
+        card.rotation.y = Math.sin(time + i)*0.5;
+      });
+
+      // Camera Lerp
+      camera.position.lerp(currentCamPos, 0.04);
+      controls.target.lerp(currentLookAt, 0.04);
+      controls.update();
+
+      renderer.render(scene, camera);
+    }
+    animate();
+
+    // --- 5. UI LOGIC (WEVERSE STYLE CONTENT) ---
+    const feedPanel = document.getElementById('feed-panel');
+
+    const uiContent = {
+      overview: `
+        <div class="glass p-5 rounded-2xl h-full flex flex-col justify-center">
+          <div class="w-10 h-10 bg-emerald-500/10 rounded-xl flex items-center justify-center mb-4 border border-emerald-500/30">
+            <i data-lucide="globe" class="w-5 h-5 text-emerald-400"></i>
+          </div>
+          <h2 class="text-xl font-bold mb-2">Macro Architecture</h2>
+          <p class="text-[11px] text-gray-300 leading-relaxed mb-6">
+            The central node routes global API payloads to regional edge servers. This prevents bottlenecking when millions of fans access the platform simultaneously during a comeback.
+          </p>
+          <div class="space-y-2">
+            <div class="flex justify-between text-[11px] border-b border-white/10 pb-2">
+              <span class="text-gray-400">Edge Caching</span><span class="font-mono text-emerald-400">99.8% HIT</span>
+            </div>
+            <div class="flex justify-between text-[11px] border-b border-white/10 pb-2">
+              <span class="text-gray-400">Connected Users</span><span class="font-mono text-white">2.4M</span>
+            </div>
+          </div>
+        </div>
+      `,
+      circles: `
+        <div class="text-[10px] font-bold text-gray-400 tracking-widest mb-2 px-2 flex items-center gap-2">
+          <span class="w-2 h-2 rounded-full bg-purple-500"></span> MUMBAI CIRCLE 🌊
+        </div>
+        
+        <div class="glass p-4 rounded-xl border-purple-500/30 shadow-[0_0_15px_rgba(168,85,247,0.15)] relative">
+          <!-- Translation UI -->
+          <div class="absolute top-3 right-3 bg-white/5 border border-white/10 px-2 py-1 rounded text-[9px] flex items-center gap-1 cursor-pointer hover:bg-white/10">
+            <i data-lucide="languages" class="w-3 h-3 text-emerald-400"></i> EN / HI
+          </div>
+
+          <div class="flex items-center gap-3 mb-3 mt-2">
+            <div class="w-8 h-8 rounded-full bg-gradient-to-tr from-purple-600 to-rose-400 flex items-center justify-center font-bold text-xs">A</div>
+            <div>
+              <h4 class="font-bold text-xs flex items-center gap-1">Aanya_RM_7 <i data-lucide="shield-check" class="w-3 h-3 text-[#00d8a1]"></i></h4>
+              <p class="text-[9px] text-gray-400 font-mono">Verified Fan • 12m ago</p>
+            </div>
+          </div>
+          <p class="text-xs text-gray-200 leading-relaxed">
+            Streaming party setup for the upcoming drop at Marine Drive this weekend! 💜 We have 200+ local Desi ARMYs joining!
+          </p>
+          <div class="text-[10px] text-gray-400 mt-2 p-2 bg-black/30 rounded border-l-2 border-purple-500">
+            <i data-lucide="sparkles" class="w-3 h-3 inline text-purple-400"></i> Translated by Edge AI
+            <br/><span class="text-white mt-1 block">इस सप्ताहांत मरीन ड्राइव पर आगामी ड्रॉप के लिए बड़े पैमाने पर स्ट्रीमिंग पार्टी...</span>
+          </div>
+        </div>
+      `,
+      sync: `
+        <div class="text-[10px] font-bold text-gray-400 tracking-widest mb-2 px-2 flex items-center gap-2">
+          <span class="w-2 h-2 rounded-full bg-red-500 animate-ping"></span> QUEUESHIELD ENGINE
+        </div>
+
+        <div class="glass p-5 rounded-xl border-red-500/30 overflow-hidden relative">
+          <div class="absolute bottom-0 left-0 w-full h-1/2 bg-gradient-to-t from-red-900/40 to-transparent"></div>
+          
+          <div class="relative z-10">
+            <h3 class="font-bold text-base text-white mb-1 flex items-center gap-2">
+              <i data-lucide="radio" class="w-4 h-4 text-red-400 animate-pulse"></i> Global Watch Party
+            </h3>
+            <p class="text-[11px] text-gray-400 mb-4">WebSocket Redis Pub/Sub syncing</p>
+            
+            <div class="bg-black/40 rounded-lg p-3 mb-4 font-mono text-xs">
+              <div class="flex justify-between mb-1"><span class="text-gray-500">Latency Check:</span> <span class="text-emerald-400">OK</span></div>
+              <div class="flex justify-between mb-1"><span class="text-gray-500">NTP Drift:</span> <span class="text-white">±2ms</span></div>
+              <div class="flex justify-between"><span class="text-gray-500">Concurrent:</span> <span class="text-red-400 font-bold">142,091</span></div>
+            </div>
+
+            <button class="w-full py-2 bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-500 hover:to-rose-500 rounded-lg text-xs font-bold transition shadow-lg shadow-red-900/50">
+              Simulate Load
+            </button>
+          </div>
+        </div>
+      `,
+      vault: `
+        <div class="text-[10px] font-bold text-gray-400 tracking-widest mb-2 px-2 flex items-center gap-2">
+          <span class="w-2 h-2 rounded-full bg-blue-500"></span> DIGITAL COLLECTIBLES
+        </div>
+
+        <div class="glass p-4 rounded-xl border-blue-500/20 shadow-xl">
+          <div class="flex justify-center mb-4">
+            <div class="w-24 h-32 rounded-lg bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 border border-white/20 shadow-[0_0_20px_rgba(139,92,246,0.3)] flex items-end p-2 relative overflow-hidden">
+              <div class="absolute top-0 right-0 w-8 h-8 bg-white/20 blur-xl"></div>
+              <span class="text-[9px] font-bold text-white bg-black/50 px-1.5 py-0.5 rounded backdrop-blur-sm">Founding Member</span>
+            </div>
+          </div>
+          
+          <h4 class="font-bold text-sm text-center mb-1">Mumbai Launch Ticket</h4>
+          <p class="text-[10px] text-gray-400 text-center mb-3">Verified On-Chain Badge</p>
+          
+          <div class="bg-blue-950/40 p-2 rounded text-[10px] text-blue-200 border border-blue-900/50 text-center font-mono">
+            HASH: 0x9f8...a1b2
+          </div>
+        </div>
+      `
+    };
+
+    feedPanel.innerHTML = uiContent.overview;
+    lucide.createIcons();
+
+    window.switchView = function(view) {
+      // 1. Update Buttons
+      document.querySelectorAll('.nav-btn').forEach(btn => {
+        btn.classList.remove('bg-white/10', 'text-white', 'active');
+        btn.classList.add('text-gray-400');
+      });
+      const activeBtn = document.getElementById(`btn-${view}`);
+      activeBtn.classList.add('bg-white/10', 'text-white', 'active');
+      activeBtn.classList.remove('text-gray-400');
+
+      // 2. Animate UI Panel
+      feedPanel.style.opacity = 0;
+      feedPanel.style.transform = 'translateX(-20px)';
+      
+      setTimeout(() => {
+        feedPanel.innerHTML = uiContent[view];
+        lucide.createIcons();
+        feedPanel.style.opacity = 1;
+        feedPanel.style.transform = 'translateX(0)';
+      }, 250);
+
+      // 3. Update Camera Targets (Lerp handled in animate loop)
+      currentCamPos = camTargets[view].pos;
+      currentLookAt = camTargets[view].look;
+    }
+
+    // Resize Handler
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+  </script>
+</body>
+</html>
